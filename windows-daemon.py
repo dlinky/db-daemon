@@ -4,9 +4,9 @@ import sys
 import win32event
 import win32service
 import win32serviceutil
-import sqlite3
+import pymysql
 import os
-
+import pandas as pd
 
 class TestService(win32serviceutil.ServiceFramework):
     _svc_name_ = "TestService"
@@ -24,25 +24,45 @@ class TestService(win32serviceutil.ServiceFramework):
 
     def SvcDoRun(self):
         rc = None
-        connect, cursor = dbOpen()
+        db, cursor = dbOpen()
         while rc != win32event.WAIT_OBJECT_0:
-            dbwrite(connect, cursor)
+            data = dbRead(cursor)
+            dbPrint(data)
             rc = win32event.WaitForSingleObject(self.hWaitStop, 5000)
 
 
 def dbOpen():
-    db_path = os.getcwd() + '/mydb.db'
-    connect = sqlite3.connect(db_path)
-    cursor = connect.cursor()
-    return connect, cursor
+    # 데이터 베이스 연결
+    occupancy_db = pymysql.connect(
+        user='datacollection',
+        passwd='collection2021!@',
+        host='121.156.90.144',
+        db='db_datacollection',
+        charset='utf8'
+    )
+    cursor = occupancy_db.cursor(pymysql.cursors.DictCursor)
+    return occupancy_db, cursor
 
 
-def dbClose(connect, cursor):
+def dbClose(db, cursor):
     cursor.close()
-    connect.close()
+    db.close()
 
 
-def dbwrite(connect, cursor):
+def dbRead(cursor):
+    query_str = 'SELECT sdata_credate, sdata_temp, sdata_humi, sdata_co2 FROM vw_data_composite '
+    condition_str = 'WHERE sdata_modbus_id = 1 AND sdata_credate >= SYSDATE;'
+    cursor.execute(query_str+condition_str)
+    data = cursor.fetchall()
+    return data
+
+
+def dbPrint(data):
+    df = pd.DataFrame(data)
+    print(df)
+
+
+def dbwrite(db, cursor):
     cursor.execute("CREATE TABLE IF NOT EXISTS sensors (timestamp time a real b real c real)")
     cursor.execute("INSERT INTO ")
     cursor.execute("SELECT * FROM stocks")
