@@ -1,12 +1,12 @@
 import servicemanager
 import socket
 import sys
-import win32event
 import win32service
 import win32serviceutil
 import pymysql
-import os
 import pandas as pd
+import win32
+
 
 class TestService(win32serviceutil.ServiceFramework):
     _svc_name_ = "TestService"
@@ -15,20 +15,21 @@ class TestService(win32serviceutil.ServiceFramework):
 
     def __init__(self, args):
         win32serviceutil.ServiceFramework.__init__(self, args)
-        self.hWaitStop = win32event.CreateEvent(None, 0, 0, None)
+        self.hWaitStop = win32.CreateEvent(None, 0, 0, None)
         socket.setdefaulttimeout(60)
 
     def SvcStop(self):
         self.ReportServiceStatus(win32service.SERVICE_STOP_PENDING)
-        win32event.SetEvent(self.hWaitStop)
+        win32.SetEvent(self.hWaitStop)
 
     def SvcDoRun(self):
         rc = None
         db, cursor = dbOpen()
-        while rc != win32event.WAIT_OBJECT_0:
+        while rc != win32.WAIT_OBJECT_0:
             data = dbRead(cursor)
-            dbPrint(data)
-            rc = win32event.WaitForSingleObject(self.hWaitStop, 5000)
+            df = pd.DataFrame(data)
+            df.to_csv('test.csv')
+            rc = win32.WaitForSingleObject(self.hWaitStop, 5000)
 
 
 def dbOpen():
@@ -51,22 +52,17 @@ def dbClose(db, cursor):
 
 def dbRead(cursor):
     query_str = 'SELECT sdata_credate, sdata_temp, sdata_humi, sdata_co2 FROM vw_data_composite '
-    condition_str = 'WHERE sdata_modbus_id = 1 AND sdata_credate >= SYSDATE;'
+    condition_str = 'WHERE sdata_modbus_id = 1 AND sdata_credate >= (NOW() - INTERVAL 2 DAY);'
     cursor.execute(query_str+condition_str)
     data = cursor.fetchall()
     return data
-
-
-def dbPrint(data):
-    df = pd.DataFrame(data)
-    print(df)
 
 
 def dbwrite(db, cursor):
     cursor.execute("CREATE TABLE IF NOT EXISTS sensors (timestamp time a real b real c real)")
     cursor.execute("INSERT INTO ")
     cursor.execute("SELECT * FROM stocks")
-    connect.commit()
+    db.commit()
 
 
 if __name__ == '__main__':
