@@ -45,30 +45,37 @@ def dbwrite(data, db, cursor):
     df = df.resample('1T').first()
     interval = 50
     for index in range(0, int(len(df)/10)):
-        df_mini = df[index:index+interval]
-        last_time = df.index[-1]
-        print('processing ', last_time)
-        array = np.array(df_mini)
-        array = (array - df_mean) / df_std
-        array = np.reshape(array, ((1,) + array.shape))
-        print('predicting')
-        predictions = co2_model.predict(array)[0, :, 2]
-        print('predicted')
+        print(f'df[{index*10}:{index*10+interval}]')
+        df_mini = df[index*10:index*10+interval]
+        last_time = df_mini.index[-1]
 
+        # 예측값을 얻기 위해 학습데이터 기준으로 정규화
+        array = np.array(df_mini)
+        array = (array - df_mean)/df_std
+        array = np.reshape(array, ((1,) + array.shape))
+        predictions = co2_model.predict(array)[0]
+
+        # 예측값을 직관적으로 보정하기 위해 정규화를 역으로 연산
+        predictions = predictions * df_std + df_mean
+        predictions = predictions[:, 2]
+
+        print('writing ', last_time)
         for count, prediction in enumerate(predictions):
             if last_time.weekday() < 4:
-                if last_time.hour >= 8 or last_time.hour <= 19:
-                    people = int((prediction + np.random()*50 - 400)/800*20)
+                if 8 <= last_time.hour <= 19:
+                    people = int((prediction + np.random.rand()*50 - 400)/800*20)
                 else:
                     people = 0
+            else:
+                people = 0
 
             credate = last_time + datetime.timedelta(minutes=count+1)
-            print(people, credate)
-            #cursor.execute(f"INSERT INTO dc_short_term VALUES ({people}, {credate})")
-            #cursor.execute("SELECT * FROM stocks")
+            if cursor.execute("SELECT EXISTS (SELECT * from dc_short_term WHERE regdate = %s limit 1) AS SUCCESS;", (credate)) == 1:
+                continue
+                #cursor.execute("UPDATE dc_short_term SET data = %s WHERE regdate = %s", (people, credate))
+            cursor.execute("INSERT INTO dc_short_term (regdate, data) VALUES (%s, %s)", (credate, people))
 
-        #db.commit()
-        time.sleep(1)
+        db.commit()
 
 
 def main():
